@@ -1,0 +1,27 @@
+# ---- 运行时数据:里面有事件日志和私钥,绝对不要提交 ----
+data/
+keys/
+logs/
+*.db
+*.db-wal
+*.db-shm
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- 环境与密钥 ----
+.env
+*.pem
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,38 @@
+# 没有这个文件,构建上下文会把 .venv / data / keys 一起发给 Docker,
+# 好几百 MB,轻则构建巨慢,重则直接 DeadlineExceeded 构建失败。
+# 而且 data/ keys/ 里是私钥和事件日志 —— 绝不能进镜像。
+
+# ---- 运行时数据与密钥(最要紧)----
+data/
+keys/
+logs/
+*.db
+*.db-wal
+*.db-shm
+*.pem
+
+# ---- Python 环境 ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- 文档与素材:镜像运行时用不到 ----
+docs/
+*.md
+!README.md
+*.png
+*.jpg
+
+# ---- 编排与脚本 ----
+docker-compose.yml
+.dockerignore
+.git/
+.gitignore
+.env
+.DS_Store
+.idea/
+.vscode/

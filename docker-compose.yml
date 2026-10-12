@@ -1,0 +1,105 @@
+# AgentMesh 单机编排:1 个中心 + 6 个 Agent,共用一个镜像
+#
+#   docker compose up -d --build     # 首次
+#   docker compose logs -f hub
+#   docker compose down
+#
+# 关键点:所有 service 共用 `image: agentmesh:local`,只有 hub 声明 `build:`,
+# 所以镜像只构建一次,而不是每个 service 构建一份一样的。
+#
+# 密钥说明:所有容器共享 /keys 卷,Agent 之间需要看到彼此的公钥才能独立验签。
+# 中心代码里没有任何读取 Agent 私钥的路径;生产环境想把两者物理隔开,
+# 参考 CLOUD.md「密钥隔离」一节。
+
+x-agent-common: &agent-common
+  image: agentmesh:local
+  depends_on:
+    - hub
+  restart: unless-stopped
+  volumes:
+    - mesh-data:/data
+    - mesh-keys:/keys
+
+services:
+  hub:
+    build:
+      context: .
+      args:
+        # 国内直连 Docker Hub 拉不动基础镜像时,改这里换成镜像加速地址
+        BASE_IMAGE: ${BASE_IMAGE:-python:3.12-slim-bookworm}
+    image: agentmesh:local
+    container_name: mesh-hub
+    command: ["--host", "0.0.0.0", "--port", "8765"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+      MESH_LEASE_SECONDS: ${MESH_LEASE_SECONDS:-30}
+      MESH_HEARTBEAT_SECONDS: ${MESH_HEARTBEAT_SECONDS:-5}
+      MESH_HANDOFF_PRIORITY_SECONDS: ${MESH_HANDOFF_PRIORITY_SECONDS:-25}
+    volumes:
+      - mesh-data:/data
+      - mesh-keys:/keys
+    ports:
+      # 只绑本机,对外交给 nginx;确实要直连再改成 "8765:8765"
+      - "127.0.0.1:8765:8765"
+    restart: unless-stopped
+
+  # ---- Agent:同一个镜像,换 entrypoint ----
+  pm:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "pm-scope", "--name", "产品经理 舒岚", "--role", "需求受理",
+              "--capabilities", "intake", "--hub", "http://hub:8765", "--step-seconds", "2"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  analyst:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "analyst-lumen", "--name", "分析师 卢明", "--role", "需求分析",
+              "--capabilities", "analyze", "--hub", "http://hub:8765", "--step-seconds", "3"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  architect:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "architect-nova", "--name", "架构师 聂远", "--role", "系统设计",
+              "--capabilities", "design", "--hub", "http://hub:8765", "--step-seconds", "3"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  builder:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "builder-tek", "--name", "工程师 谭可", "--role", "编码实现",
+              "--capabilities", "implement", "--hub", "http://hub:8765", "--step-seconds", "3"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  qa:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "qa-vera", "--name", "测试 韦安", "--role", "测试验证",
+              "--capabilities", "test", "--hub", "http://hub:8765", "--step-seconds", "3"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  reviewer:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "reviewer-rhea", "--name", "评审 荣曦", "--role", "代码评审",
+              "--capabilities", "review", "--hub", "http://hub:8765", "--step-seconds", "3"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+  writer:
+    <<: *agent-common
+    entrypoint: ["python", "-m", "agentmesh.agent"]
+    command: ["--id", "writer-lyra", "--name", "文档 柳砚", "--role", "文档编写",
+              "--capabilities", "docs", "--hub", "http://hub:8765", "--step-seconds", "2"]
+    environment:
+      MESH_ENROLLMENT_TOKEN: ${MESH_ENROLLMENT_TOKEN:-}
+
+volumes:
+  mesh-data:
+  mesh-keys:

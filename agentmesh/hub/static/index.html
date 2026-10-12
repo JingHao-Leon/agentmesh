@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentMesh · 多智能体任务交接看板</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="6" r="3.2"/><circle cx="6" cy="24" r="3.2"/>
+        <circle cx="26" cy="24" r="3.2"/><circle cx="16" cy="15" r="3.2"/>
+        <path d="M16 9.2v2.6M13.6 17.2 8 22M18.4 17.2 24 22"/>
+      </svg>
+      <div>
+        <h1>AgentMesh</h1>
+        <p>去中心化多智能体任务交接 · 无中心调度 / 事件溯源 / 签名可验证</p>
+      </div>
+    </div>
+    <div class="topright">
+      <div class="chain" id="chainBox" title="事件链链头">
+        <span class="chain-label">链头</span>
+        <span class="chain-seq" id="chainSeq">#0</span>
+        <code class="chain-hash" id="chainHash">—</code>
+      </div>
+      <div class="ws" id="wsBox"><i class="dot"></i><span id="wsText">连接中…</span></div>
+      <button class="btn btn-primary" id="btnVerify">校验整条链</button>
+    </div>
+  </header>
+
+  <!-- ============ 统计条 ============ -->
+  <section class="stats" id="stats"></section>
+
+  <main class="grid-main">
+
+    <!-- ============ 左:员工 ============ -->
+    <section class="panel panel-agents">
+      <div class="panel-head">
+        <h2>员工 Agent</h2>
+        <span class="hint" id="agentHint">一位员工 = 一个独立进程 = 一把私钥</span>
+      </div>
+      <div class="agents" id="agents"></div>
+    </section>
+
+    <!-- ============ 中:任务看板 ============ -->
+    <section class="panel panel-tasks">
+      <div class="panel-head">
+        <h2>任务看板</h2>
+        <div class="head-actions">
+          <button class="btn btn-ghost btn-sm" id="btnNewTask">+ 新建任务</button>
+        </div>
+      </div>
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- ============ 右:事件流 ============ -->
+    <section class="panel panel-events">
+      <div class="panel-head">
+        <h2>事件流</h2>
+        <div class="head-actions">
+          <select id="eventFilter" class="sel">
+            <option value="">全部事件</option>
+            <option value="handoff">只看交接</option>
+            <option value="claimed">只看认领</option>
+            <option value="completed">只看完成</option>
+          </select>
+        </div>
+      </div>
+      <div class="events" id="events"></div>
+    </section>
+  </main>
+
+  <!-- ============ 底部:校验面板 ============ -->
+  <section class="panel panel-verify" id="verifyPanel" hidden>
+    <div class="panel-head">
+      <h2>链完整性校验</h2>
+      <button class="btn btn-ghost btn-sm" id="btnCloseVerify">收起</button>
+    </div>
+    <div class="verify-body" id="verifyBody"></div>
+  </section>
+
+  <footer class="footer">
+    <span>中心地址 <code id="hubAddr">—</code></span>
+    <span>·</span>
+    <span>公钥 <code id="hubFp">—</code></span>
+    <span>·</span>
+    <span>API 文档 <a href="/docs" target="_blank">/docs</a></span>
+    <span>·</span>
+    <span>离线校验 <code>python -m agentmesh.tools.verify</code></span>
+  </footer>
+</div>
+
+<!-- ============ 任务详情抽屉 ============ -->
+<div class="drawer-mask" id="drawerMask" hidden></div>
+<aside class="drawer" id="drawer" hidden>
+  <div class="drawer-head">
+    <div>
+      <h3 id="drawerTitle">任务</h3>
+      <code class="mono" id="drawerId"></code>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="btnCloseDrawer">关闭</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<!-- ============ 新建任务 ============ -->
+<dialog class="modal" id="taskModal">
+  <form method="dialog" class="modal-form">
+    <h3>新建任务</h3>
+    <label>标题<input name="title" required maxlength="80" placeholder="例如:订单查询接口支持分页"></label>
+    <label>描述<textarea name="description" rows="3" placeholder="要做什么,验收标准是什么"></textarea></label>
+    <label>需要的能力
+      <select name="required_capability" id="capSelect"></select>
+    </label>
+    <label>优先级 <input type="number" name="priority" min="1" max="10" value="5"></label>
+    <p class="modal-note">留空能力 = 任意 Agent 都可认领。任务不指定执行人,谁先领到谁做。</p>
+    <menu>
+      <button value="cancel" class="btn btn-ghost">取消</button>
+      <button value="ok" class="btn btn-primary" id="submitTask">创建</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

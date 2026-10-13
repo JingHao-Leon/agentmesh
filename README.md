@@ -1,22 +1,51 @@
+<div align="center">
+
 # AgentMesh
 
-> 去中心化多智能体任务交接系统 —— 一位员工一个 Agent 进程,任务靠**认领**而不是**指派**,
-> 每一次交接都留签名,**任何人(包括中心自己)都改不了历史**。
+**去中心化多智能体任务交接系统** · Decentralized multi-agent task handoff system
+
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-30%20passing-34d399)](https://github.com/JingHao-Leon/agentmesh/actions)
+[![Topic](https://img.shields.io/badge/topic-multi--agent-8b5cf6)](https://github.com/topics/multi-agent)
+
+**任务靠「认领」而不是「指派」。每次交接都签名入链,任何人 —— 包括中心自己 —— 都改不了历史。**
+
+</div>
 
 ![看板](docs/dashboard-final.png)
 
 ---
 
-## 它到底解决什么
+## AgentMesh 是什么
 
-多 Agent 系统最容易失控的三件事,这个项目逐条对症:
+AgentMesh 是一个多智能体任务编排系统,**没有中心调度器**。每个 Agent 以独立进程运行,
+持有自己的 Ed25519 私钥,主动向中心询问"有没有我能做的活"并认领。完成一步后,
+Agent 自行判断下一步需要什么能力、该交给哪位同事,然后把任务交接过去。
+
+与 LangGraph / CrewAI / AutoGen 这类 **manager-worker 层级框架**的核心区别在于:
+中心不知道谁擅长什么,也没有"派单"接口;它只做能力过滤与原子裁决,并维护一条
+仅追加的哈希链事件日志。代价是不保证任务落到"最优人选"手中,换来的是
+**每个行为可独立举证、Agent 崩溃不阻塞流程**。
+
+| 指标 | 实测值 |
+|---|---|
+| 单元 / HTTP 测试 | **30 个全部通过** |
+| 事件链离线校验 | **133 / 133 条有效** |
+| 篡改攻击检出 | **3 / 3 种**(含中心失陷后重签整链) |
+| 并发抢同一任务 | 恰好 **1 个赢家**(数据库条件更新裁决) |
+| 容器化端到端 | `docker compose up` **8 容器跑通** |
+
+---
+
+## 多智能体系统最容易失控的四件事
 
 | 常见问题 | 这里的做法 |
 |---|---|
 | 中心调度器单点,谁忙谁闲全靠它猜 | **没有调度器**。Agent 自己来问"有没有我能干的活",中心只做原子裁决 |
 | Agent 崩了,任务被它锁死,没人知道 | **租约**。到期自动回队列,写一条 `task.released`,没人来救也能自愈 |
 | Agent 之间黑箱交接,出了问题查不到 | **每步签名上链**,交接理由、上下文、能力跃迁全程可追 |
-| 中心可以悄悄改数据/删记录 | **哈希链 + 内容签名双层**,中心失陷也伪造不出 Agent 的行为 |
+| 中心可以悄悄改数据 / 删记录 | **哈希链 + 内容签名双层**,中心失陷也伪造不出 Agent 的行为 |
 
 ---
 
@@ -234,7 +263,7 @@ agentmesh/
     ├── seed.py         灌演示任务
     ├── verify.py       离线校验器(不连中心)
     └── tamper.py       篡改检测演示
-tests/test_mesh.py      24 个测试
+tests/test_mesh.py      30 个测试
 docs/                   截图
 ```
 
@@ -247,3 +276,100 @@ docs/                   截图
 - **SQLite(WAL)**:单机足够撑到几千事件;跨主机部署换 Postgres,仓储层是隔离的。
 
 更多:[ARCHITECTURE.md](ARCHITECTURE.md) 设计细节 · [CLOUD.md](CLOUD.md) 上云部署
+---
+
+## AgentMesh 和 LangGraph / CrewAI / AutoGen 怎么选
+
+这两类架构解决的不是同一个问题。选错的代价是:要么失去审计能力,要么白白付出
+分布式协调的复杂度。
+
+| 维度 | LangGraph / CrewAI / AutoGen(manager-worker) | AgentMesh |
+|---|---|---|
+| **任务分配** | 中心协调者拆任务、派给 worker | Agent 主动认领,**无调度器** |
+| **任务图** | 通常预先定义成固定 DAG | 运行时由 Agent 之间自然涌现 |
+| **失败恢复** | 依赖协调者兜底 | 租约到期自动回队列,**不依赖中心** |
+| **行为审计** | 应用内日志,中心可改 | 哈希链 + Ed25519 签名,**中心改不了** |
+| **中心被攻陷** | 可伪造 worker 的执行记录 | 无法伪造 Agent 行为(没有 Agent 私钥) |
+| **启动成本** | 需装大模型 SDK、配 API key | 4 个 Python 包,**不调任何外部服务** |
+| **适合** | 流程固定、需要强编排的批处理 | 合规审计、跨部门协作、Agent 数量多易崩溃的场景 |
+| **不适合** | 需要最优任务分配 | 想最小化依赖、快速上生产 |
+
+一句话:**需要"谁做什么"的全局最优,就选层级框架;需要"做过什么"的不可否认,就用这个。**
+
+---
+
+## 常见问题(FAQ)
+
+### 什么是去中心化多智能体编排?
+
+去中心化多智能体编排指的是:**没有任何中心组件决定哪个 Agent 做哪件事**。
+Agent 自己声明能力、自己认领任务;共享存储只负责裁决原子认领和记录不可篡改的事件日志。
+在 AgentMesh 里,每个 Agent 的行为都由它自己的 Ed25519 私钥签名,中心无法伪造。
+
+### Agent 之间是怎么交接任务的?
+
+一个能力函数完成后会返回"下一步需要什么能力",运行时据此查找在线的、声明了该能力的
+同伴。Agent 随后释放租约、指名该同伴并给一个优先领取窗口。**窗口会自动过期** ——
+所以即使被指名的 Agent 一直不来领,任何其他有能力的 Agent 都能接手,任务不会被卡死。
+
+### 不信任服务器,怎么验证审计日志?
+
+运行离线校验器。它只读 SQLite 文件和公钥目录,**不连接中心**:
+
+```bash
+.venv/bin/python -m agentmesh.tools.verify
+```
+
+它重算每一条 SHA-256 哈希来检测改序 / 删除 / 插入,并验证每个 Ed25519 内容签名。
+即使中心被完全攻陷、重算并重新签名了整条链,它也无法伪造某个 Agent 的动作 ——
+因为它手里没有 Agent 的私钥。仓库里的 `tools/tamper.py` 就是这个场景的可复现演示。
+
+### Agent 执行到一半崩了会怎样?
+
+任务由租约持有,租约到期后由后台清扫器收回队列,并写一条 `task.released` 事件,
+**不需要中心做任何干预**。同一任务连续失败 5 次后会被标记为 `failed` 而不再重排,
+避免一个必然失败的任务在队列里无限循环。
+
+### 为什么用 Ed25519 而不是 HMAC?
+
+HMAC 要求验证方持有密钥。那样中心就同时成了"记账人"和"裁判",去中心化无从谈起 ——
+验证者必须信任被验证的对象。Ed25519 是非对称签名:中心只持有各 Agent 的公钥,
+只有 Agent 自己能产生有效事件,任何拿到公钥的人都能独立验证整条链。
+
+### 这个系统和"加一张日志表"有什么区别?
+
+日志表只能证明"记录发生过什么",不能证明"记录没被改过"。哈希链解决完整性,
+Ed25519 解决归属,两者叠加才使得**中心自己动手脚也会被发现**。这也是
+`tools/tamper.py` 存在的意义:它不是文档声称,而是可复现的对抗性验证。
+
+### 生产部署需要哪些前置?
+
+1. 必须设置 `MESH_ENROLLMENT_TOKEN`,否则任何人都能注册 Agent 进来;
+2. 中心只监听 `127.0.0.1`,对外走 nginx + HTTPS;
+3. nginx 的 `/ws` 路径必须配 WebSocket 升级头,否则看板连上但不更新;
+4. 定期跑离线校验并对非零退出码告警(见 CLOUD.md 的 cron 配置)。
+
+---
+
+## 文档
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) —— 设计取舍、**去中心化边界诚实清单**、故障降级表
+- [CLOUD.md](CLOUD.md) —— Docker / systemd / nginx+TLS / PostgreSQL 迁移 / 备份审计
+- [CHANGELOG.md](CHANGELOG.md) —— 版本变更
+- [llms.txt](llms.txt) —— 给 LLM 读的精简版项目索引
+
+## 相关研究
+
+本项目的设计参考了以下公开研究与既有实践:
+
+- **Contract-net 协议**:经典多智能体系统中的任务广播—投标—中标模式,
+  主张"Agent 自己更清楚自己的能力与负载"
+- **Event sourcing(事件溯源)**:状态是事件的投影,历史不可变
+- **Lease-based locking**:Chubby / etcd lease 那一套崩溃安全机制
+- **GEO: Generative Engine Optimization**(Aggarwal 等,KDD 2024,
+  [arXiv:2311.09735](https://arxiv.org/abs/2311.09735))—— 本仓库的
+  FAQ 结构与"答案先行"写法参考了该论文
+
+## License
+
+[MIT](LICENSE)

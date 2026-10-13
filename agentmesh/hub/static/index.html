@@ -3,7 +3,109 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgentMesh · 多智能体任务交接看板</title>
+<title>AgentMesh · 去中心化多智能体任务交接看板</title>
+
+<!-- ===== SEO / AEO / GEO =====
+     这几个块看着像装饰,其实是给检索引擎和 AI 答案引擎读的:
+     摘要决定它要不要引用你,结构化数据决定它能不能准确理解你,
+     robots/llms.txt 决定它能不能爬到你。删掉不影响功能,但会掉可发现性。 -->
+<meta name="description" content="AgentMesh 看板:去中心化多智能体任务交接系统。Agent 自主认领任务而非被指派,每次交接经 Ed25519 签名并进入哈希链,任何人可脱离中心独立验证。">
+<meta name="keywords" content="multi-agent,multi-agent systems,agent orchestration,task handoff,decentralized,event sourcing,tamper-evident log,Ed25519,agent dashboard,multi-agent 编排,多智能体,任务交接,去中心化">
+<meta name="author" content="JingHao-Leon">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="{{CANONICAL}}">
+
+<!-- 社交/IM 分享卡片 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AgentMesh">
+<meta property="og:title" content="AgentMesh · 去中心化多智能体任务交接看板">
+<meta property="og:description" content="任务靠认领而非指派;每次交接签名入链,历史可脱离中心独立验证。">
+<meta property="og:url" content="{{CANONICAL}}">
+<meta property="og:image" content="{{CANONICAL}}/static/favicon.svg">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="AgentMesh · 去中心化多智能体任务交接看板">
+<meta name="twitter:description" content="任务靠认领而非指派;每次交接签名入链,历史可脱离中心独立验证。">
+
+<!-- AI 爬虫入口:llmstxt.org 约定,越来越多答案引擎会主动拉取 -->
+<link rel="alternate" type="text/plain" href="{{CANONICAL}}/llms.txt" title="llms.txt">
+
+<!-- 结构化数据:让答案引擎准确理解"这是什么",而不是从散文里猜 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "AgentMesh",
+      "alternateName": "去中心化多智能体任务交接系统",
+      "description": "去中心化多智能体任务交接系统。任务通过认领分配而非中心指派;所有状态变化写入仅追加的哈希链事件日志,并由行为者用 Ed25519 私钥签名,任何持有公钥者均可脱离中心独立验证。",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Linux, macOS",
+      "programmingLanguage": {"@type": "ComputerLanguage", "name": "Python"},
+      "url": "{{CANONICAL}}",
+      "codeRepository": "https://github.com/JingHao-Leon/agentmesh",
+      "license": "https://opensource.org/licenses/MIT",
+      "version": "1.0.0",
+      "keywords": "multi-agent, agent orchestration, task handoff, decentralized, event sourcing, tamper-evident log, Ed25519",
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+      "featureList": [
+        "任务自主认领,无中心调度器",
+        "租约机制,Agent 崩溃后任务自动回队列",
+        "SHA-256 哈希链 + Ed25519 内容签名双层校验",
+        "Agent 本地事件镜像,先验后存",
+        "WebSocket 实时看板"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is decentralized multi-agent orchestration?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Decentralized multi-agent orchestration means no central component decides which agent does which task. Agents declare their own capabilities and claim work themselves; the shared state only arbitrates atomic claims and records an immutable event log. In AgentMesh, agent actions are individually signed with Ed25519, so the central server cannot forge them."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do agents hand off tasks to each other?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A capability function returns the capability it needs next, and the runtime looks up which online peer declares it. The agent then releases its lease and names that peer with a priority window. The window expires automatically, so if the named peer never claims the task, any other capable agent can take it and the task cannot be stranded."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you verify the audit log without trusting the server?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Run the offline verifier, which reads only the SQLite file and the public key directory and never connects to the hub. It recomputes every SHA-256 hash to detect reordering, deletion or insertion, and verifies every Ed25519 content signature. Even a fully compromised hub that recomputes and re-signs the entire chain cannot forge an agent's action, because it does not hold agent private keys."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens when an agent crashes mid-task?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Work is held under a lease that expires after a configurable timeout. A background sweeper returns expired tasks to the queue and writes a task.released event, so no central intervention is needed. A task that fails repeatedly is abandoned after five attempts instead of looping forever."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "AgentMesh 和 LangGraph / CrewAI / AutoGen 有什么区别?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LangGraph、CrewAI、AutoGen 这类框架采用中心协调者模式:一个 manager 拆任务、派给 worker、收结果,适合流程固定的 DAG。AgentMesh 没有调度器,任务靠 Agent 主动认领,任务图在运行时由 Agent 之间自然形成。它换来的是:每个行为可独立举证、Agent 崩溃不阻塞流程、不需要信任中心对能力的判断。代价是不保证任务被最优人选中。"
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
 </head>

@@ -1,0 +1,72 @@
+# AgentMesh
+
+> A decentralized multi-agent task handoff system. Agents claim tasks instead of
+> receiving assignments; every handoff is signed, and the full history is
+> independently verifiable without trusting the central server.
+>
+> 去中心化多智能体任务交接系统。任务靠"认领"而非"指派";每次交接都有签名,
+> 完整历史可脱离中心独立校验。
+
+## What it is
+
+AgentMesh assigns work by **claiming**, not by dispatch. Each agent runs as a
+separate process with its own Ed25519 private key and asks the hub for work it is
+capable of. When an agent finishes a step, it decides — based on the next required
+capability — which peer should continue, and hands the task off.
+
+## Key facts
+
+- **No central scheduler**: the hub does not know which agent is good at what and
+  has no "assign" endpoint. It only filters by capability and arbitrates atomic claims.
+- **Lease-based recovery**: if an agent crashes, the task returns to the queue
+  automatically when its lease expires. No central intervention required.
+- **Two-layer verifiability**: a SHA-256 hash chain detects reordering, deletion and
+  insertion; Ed25519 content signatures detect content tampering. The hub holds its
+  own private key but **never holds an agent's private key**, so it cannot forge
+  agent behavior.
+- **Local event mirror**: every agent keeps a complete copy of the event log and
+  verifies each event locally *before* storing it.
+- **30 tests passing**, 133/133 events verified offline, 3/3 tamper attacks detected
+  (including a fully compromised hub that recomputes and re-signs the entire chain).
+
+## Documentation
+
+- [README (中文,完整)](https://github.com/JingHao-Leon/agentmesh/blob/main/README.md) —
+  quick start, architecture summary, verified attack transcript
+- [ARCHITECTURE.md](https://github.com/JingHao-Leon/agentmesh/blob/main/ARCHITECTURE.md) —
+  design trade-offs, an explicit boundary list for what is and is not decentralized,
+  failure modes and degradation
+- [CLOUD.md](https://github.com/JingHao-Leon/agentmesh/blob/main/CLOUD.md) —
+  Docker, systemd, nginx + TLS, PostgreSQL migration, backup and audit cron
+- [CHANGELOG.md](https://github.com/JingHao-Leon/agentmesh/blob/main/CHANGELOG.md)
+
+## Code map
+
+| Path | Purpose |
+|---|---|
+| `agentmesh/events.py` | Event model, hash chain, verification |
+| `agentmesh/signing.py` | Ed25519 signing, key fingerprints |
+| `agentmesh/store.py` | SQLite event log, projections, lease-based claiming |
+| `agentmesh/mirror.py` | Agent-local event mirror (verify before store) |
+| `agentmesh/hub/app.py` | FastAPI hub, REST + WebSocket, lease sweeper |
+| `agentmesh/agent/runtime.py` | Agent runtime: register, claim, execute, hand off |
+| `agentmesh/capabilities.py` | Pluggable capability registry — swap in real business logic here |
+| `agentmesh/hub/static/` | Dashboard: zero build, zero CDN |
+| `agentmesh/tools/verify.py` | Offline chain verifier (does not connect to the hub) |
+| `agentmesh/tools/tamper.py` | Three reproducible tamper attacks |
+
+## When to use this instead of a manager/worker framework
+
+Choose a hierarchical framework (LangGraph, CrewAI, AutoGen, OpenAI Agents SDK)
+when you need a single coordinator that plans a fixed DAG and aggregates results.
+
+Choose AgentMesh when the requirement is **auditability and fault tolerance
+without trusting a central server**: agent actions must be individually provable,
+agent crashes must not stall work, and the task graph must emerge at runtime from
+what agents can actually do.
+
+## Status
+
+- License: MIT
+- Language: Python 3.11+, FastAPI, SQLite (WAL), zero-dependency frontend
+- Version: 1.0.0

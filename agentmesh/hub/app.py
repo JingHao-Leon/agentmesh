@@ -637,8 +637,112 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
         @app.get("/", include_in_schema=False)
-        async def index():
-            return FileResponse(STATIC_DIR / "index.html")
+        async def index(request: Request):
+            """渲染看板页面。
+
+            页面里用 {{CANONICAL}} 占位,而不是写死域名 —— 部署到任何域名下,
+            canonical / og:url / 结构化数据里的 url 都得跟着变,写死就等于告诉
+            所有搜索引擎"这份内容属于别的站",再好的内容也不会被正常索引。
+            """
+            origin = str(request.base_url).rstrip("/")
+            html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+            html = html.replace("{{CANONICAL}}", origin)
+            return Response(
+                html, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"}
+            )
+
+        @app.get("/robots.txt", include_in_schema=False)
+        async def robots(request: Request):
+            """明确放行 9 个 AI 爬虫。
+
+            默认放行("*")不等于被引用:部分爬虫会先查这个文件确认抓取许可。
+            写出来没有坏处,被误加 Disallow 的场合则能救回整站可发现性。
+            """
+            origin = str(request.base_url).rstrip("/")
+            bots = (
+                "GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended",
+                "OAI-SearchBot", "anthropic-ai", "ChatGPT-User", "Bytespider", "CCBot",
+            )
+            body = ["User-agent: *", "Allow: /", ""]
+            for b in bots:
+                body += [f"User-agent: {b}", "Allow: /", ""]
+            body += [
+                f"Sitemap: {origin}/sitemap.xml",
+                f"# llms.txt 入口:{origin}/llms.txt",
+                "",
+            ]
+            return Response("\n".join(body), media_type="text/plain; charset=utf-8")
+
+        @app.get("/llms.txt", include_in_schema=False)
+        async def llms_txt(request: Request):
+            """llmstxt.org 约定:给 LLM 看的站点地图。
+
+            与仓库根目录那份同源,但这份随部署走 —— 域名上的那份才爬虫会拉。
+            """
+            origin = str(request.base_url).rstrip("/")
+            repo = "https://github.com/JingHao-Leon/agentmesh"
+            text = f"""# AgentMesh
+
+> Decentralized multi-agent task handoff system. Agents claim tasks instead of
+> receiving assignments; every handoff is signed and independently verifiable.
+
+## What it is
+
+A multi-agent orchestration system with no central scheduler. Agents declare their
+own capabilities and claim work. A finished step hands off to whichever peer
+declares the next required capability. The hub only arbitrates atomic claims and
+maintains an append-only, hash-chained event log.
+
+## Key facts
+
+- No central scheduler; the hub has no assign endpoint
+- Lease-based recovery: crashed agents return work to the queue automatically
+- Two-layer verifiability: SHA-256 hash chain plus Ed25519 content signatures
+- The hub cannot forge agent behavior, because it never holds agent private keys
+- Agent-local event mirrors: verify before store, never trust-then-verify
+- 30 tests passing; 133/133 events verified offline; 3/3 tamper attacks detected
+
+## Links
+
+- [Dashboard]({origin}/)
+- [API documentation]({origin}/docs)
+- [Source code and full README]({repo})
+- [Architecture notes]({repo}/blob/main/ARCHITECTURE.md)
+- [Cloud deployment guide]({repo}/blob/main/CLOUD.md)
+- [Changelog]({repo}/blob/main/CHANGELOG.md)
+
+## License
+
+MIT
+"""
+            return Response(text, media_type="text/plain; charset=utf-8")
+
+        @app.get("/sitemap.xml", include_in_schema=False)
+        async def sitemap(request: Request):
+            """带 lastmod 的站点地图 —— 新鲜度信号,AI 引擎明显偏好近期更新的内容。"""
+            origin = str(request.base_url).rstrip("/")
+            now = time.strftime("%Y-%m-%d")
+            urls = [
+                (f"{origin}/", "1.0", "daily"),
+                (f"{origin}/docs", "0.3", "weekly"),
+            ]
+            parts = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+            ]
+            for u, prio, freq in urls:
+                parts += [
+                    "  <url>",
+                    f"    <loc>{u}</loc>",
+                    f"    <lastmod>{now}</lastmod>",
+                    f"    <changefreq>{freq}</changefreq>",
+                    f"    <priority>{prio}</priority>",
+                    "  </url>",
+                ]
+            parts.append("</urlset>")
+            return Response(
+                "\n".join(parts), media_type="application/xml; charset=utf-8"
+            )
 
         @app.get("/favicon.ico", include_in_schema=False)
         async def favicon():
